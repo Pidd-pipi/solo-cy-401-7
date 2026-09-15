@@ -75,3 +75,31 @@ func (r *ContractRepository) CountByParty(userID uint) (int64, error) {
 	}
 	return count, nil
 }
+
+// Freeze atomically claims the single open-dispute slot of a contract. It
+// returns false when the slot is already taken, so concurrent double-open
+// attempts cannot both succeed (active_dispute_id has a unique index).
+func (r *ContractRepository) Freeze(contractID, disputeID uint) (bool, error) {
+	res := r.db.Model(&model.Contract{}).
+		Where("id = ? AND active_dispute_id IS NULL", contractID).
+		Update("active_dispute_id", disputeID)
+	if res.Error != nil {
+		return false, fmt.Errorf("freeze contract: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
+}
+
+// Unfreeze releases the freeze only while it still points at the given case,
+// preventing a stale transaction from clearing a newer case's slot.
+func (r *ContractRepository) Unfreeze(contractID, disputeID uint) error {
+	res := r.db.Model(&model.Contract{}).
+		Where("id = ? AND active_dispute_id = ?", contractID, disputeID).
+		Update("active_dispute_id", nil)
+	if res.Error != nil {
+		return fmt.Errorf("unfreeze contract: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrConflict
+	}
+	return nil
+}

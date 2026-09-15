@@ -2,7 +2,10 @@
   <el-card class="contract-card" shadow="hover" @click="$router.push(`/contracts/${contract.id}`)">
     <div class="c-head">
       <b>{{ contract.contractNo }}</b>
-      <StatusBadge :status="contract.status" kind="contract" />
+      <div class="c-badges">
+        <el-tag v-if="frozen" type="danger" size="small" effect="dark">争议中</el-tag>
+        <StatusBadge :status="contract.status" kind="contract" />
+      </div>
     </div>
     <p class="muted">{{ contract.requirement?.title || '相关需求' }}</p>
     <p><b>{{ formatCurrency(contract.totalAmount) }}</b>
@@ -17,15 +20,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { Contract } from '../../types';
 import StatusBadge from './StatusBadge.vue';
 import { formatCurrency } from '../../utils/formatCurrency';
 
-defineProps<{ contract: Contract }>();
+const props = defineProps<{ contract: Contract }>();
+const frozen = computed(() => props.contract.activeDisputeId != null);
 </script>
 
 <style scoped>
 .contract-card { margin-bottom: 16px; cursor: pointer; }
 .c-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.c-badges { display: flex; gap: 6px; align-items: center; }
 .c-parties { display: flex; gap: 8px; margin-top: 8px; }
 </style>

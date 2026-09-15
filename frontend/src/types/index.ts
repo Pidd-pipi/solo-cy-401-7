@@ -50,6 +50,17 @@ export interface ContractStage {
   dueAt: string;
 }
 
+export interface Settlement {
+  caseId: number;
+  verdict: string;
+  partyARatio: number;
+  partyBRatio: number;
+  partyAAmount: number;
+  partyBAmount: number;
+  totalAmount: number;
+  note?: string;
+}
+
 export interface Contract {
   id: number;
   contractNo: string;
@@ -57,6 +68,8 @@ export interface Contract {
   paymentType: string;
   stages: ContractStage[];
   status: string;
+  activeDisputeId?: number | null;
+  settlement?: Settlement | null;
   requirementId: number;
   partyAId: number;
   partyBId: number;
@@ -64,6 +77,46 @@ export interface Contract {
   partyA?: User;
   partyB?: User;
   requirement?: Requirement;
+}
+
+export interface DisputeMaterial {
+  id: number;
+  caseId: number;
+  submitterId: number;
+  submitterSide: string;
+  kind: string;
+  content: string;
+  evidence: string[];
+  createdAt?: string;
+}
+
+export interface DisputeCase {
+  id: number;
+  caseNo: string;
+  contractId: number;
+  openerId: number;
+  openerSide: string;
+  reason: string;
+  claim: string;
+  stageSnapshot: string;
+  status: string;
+  verdict?: string;
+  partyARatio: number;
+  partyBRatio: number;
+  partyAAmount: number;
+  partyBAmount: number;
+  totalSettled: number;
+  rulingNote?: string;
+  resolverId?: number;
+  resolvedAt?: string | null;
+  withdrawnById?: number;
+  withdrawnReason?: string;
+  withdrawnAt?: string | null;
+  version: number;
+  createdAt?: string;
+  materials?: DisputeMaterial[];
+  contract?: Contract;
+  opener?: User;
 }
 
 export interface PageResult<T> {
@@ -77,5 +130,6 @@ export interface DashboardData {
   myRequirements: Requirement[];
   myBids: Bid[];
   myContracts: Contract[];
+  openDisputes: DisputeCase[];
   counts: Record<string, number>;
 }

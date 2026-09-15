@@ -74,6 +74,9 @@ func (s *ContractService) Sign(id uint, userID uint, userName string) (*model.Co
 	if c.Status != constants.ContractPendingSignature {
 		return nil, constants.NewAppError(constants.CodeConflict, "合同当前不可签署")
 	}
+	if err := ensureNotFrozen(c); err != nil {
+		return nil, err
+	}
 	c.Status = constants.ContractInProgress
 	if err := s.contracts.Update(c); err != nil {
 		return nil, fmt.Errorf("sign contract: %w", err)
@@ -82,7 +85,8 @@ func (s *ContractService) Sign(id uint, userID uint, userName string) (*model.Co
 	return c, nil
 }
 
-// Complete confirms completion (requester side).
+// Complete confirms completion (requester side). Blocked while a dispute is open:
+// completion and any further stage advancement are paused during a case.
 func (s *ContractService) Complete(id uint, userID uint, userName string) (*model.Contract, error) {
 	c, err := s.contracts.FindByID(id)
 	if err != nil {
@@ -94,10 +98,11 @@ func (s *ContractService) Complete(id uint, userID uint, userName string) (*mode
 	if c.Status != constants.ContractInProgress && c.Status != constants.ContractPendingReview {
 		return nil, constants.NewAppError(constants.CodeConflict, "合同当前不可完成确认")
 	}
-	c.Status = constants.ContractCompleted
-	for i := range c.Stages {
-		c.Stages[i].Status = "done"
+	if err := ensureNotFrozen(c); err != nil {
+		return nil, err
 	}
+	c.Status = constants.ContractCompleted
+	finalizeStages(c.Stages)
 	if err := s.contracts.Update(c); err != nil {
 		return nil, fmt.Errorf("complete contract: %w", err)
 	}

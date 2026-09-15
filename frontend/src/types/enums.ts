@@ -26,6 +26,20 @@ export enum ContractStatus {
   Terminated = 'terminated'
 }
 
+// 争议案件状态（与后端 backend/internal/constants/dispute_status.go 对齐）
+export enum DisputeStatus {
+  Open = 'open',
+  Withdrawn = 'withdrawn',
+  Resolved = 'resolved'
+}
+
+// 争议裁决方式（与后端 backend/internal/constants/dispute_status.go 对齐）
+export enum DisputeVerdict {
+  FullToB = 'full_to_b',
+  FullRefundA = 'full_refund_a',
+  Proportional = 'proportional'
+}
+
 // 用户角色（与后端 backend/internal/constants/roles.go 对齐）
 export enum UserRole {
   Requester = 'requester',
@@ -57,6 +71,23 @@ export const ContractStatusLabel: Record<string, string> = {
   pending_review: '待验收',
   completed: '已完成',
   terminated: '已终止'
+};
+
+export const DisputeStatusLabel: Record<string, string> = {
+  open: '争议处理中',
+  withdrawn: '已撤回',
+  resolved: '已裁决'
+};
+
+export const DisputeSideLabel: Record<string, string> = {
+  party_a: '甲方',
+  party_b: '乙方'
+};
+
+export const DisputeVerdictLabel: Record<string, string> = {
+  full_to_b: '全额归乙方',
+  full_refund_a: '全额退回甲方',
+  proportional: '按比例结算'
 };
 
 export const RoleLabel: Record<string, string> = {

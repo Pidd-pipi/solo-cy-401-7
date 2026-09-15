@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -14,13 +16,26 @@ import (
 	"github.com/gigmatch/gigmatch/internal/repository"
 )
 
+// flowDBSeq gives each call an isolated in-memory database so the tests are
+// repeatable (`go test -count=N`); a fixed shared-cache DSN would otherwise
+// accumulate rows and violate unique constraints on the second run.
+var flowDBSeq uint64
+
 func newFlowTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	n := atomic.AddUint64(&flowDBSeq, 1)
+	dsn := fmt.Sprintf("file:flow_%s_%d?mode=memory&cache=shared", sanitizeName(t.Name()), n)
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Requirement{}, &model.Bid{}, &model.Contract{}, &model.OperationLog{}); err != nil {
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.AutoMigrate(
+		&model.User{}, &model.Requirement{}, &model.Bid{},
+		&model.Contract{}, &model.DisputeCase{}, &model.DisputeMaterial{},
+		&model.OperationLog{},
+	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

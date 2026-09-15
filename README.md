@@ -26,6 +26,7 @@ docker compose up -d --build
 - 需求详情：完整信息 + 报价列表（需求方视角）+ 报价提交表单（自由职业者视角）
 - 我的工作台：分角色展示已发布需求、已报价项目、进行中合同
 - 合同详情：条款、阶段进度（分阶段付款进度条）、双方信息
+- 争议案件：合同进行中/待验收时任一当事方可提交问题说明、诉求与证据；案件开启即冻结合同完成与阶段推进，双方可补充材料或撤回，撤回后恢复原流程；管理员可裁决全额归乙方、全额退回甲方或按比例结算（金额严格守恒）
 - 个人资料：展示/编辑个人信息、技能标签、历史项目
 - 横切：JWT 认证授权、操作日志、路由守卫、请求拦截器自动带 token
 
@@ -100,6 +101,15 @@ npm run dev
 - 数据库命名卷 `db_data` 持久化；db → backend → frontend 健康依赖链
 - 支持中文目录名部署（顶层 `name: gigmatch`）
 
+## 争议案件规则
+
+- **提交**：仅合同甲方/乙方可立案，且合同须处于 `in_progress` 或 `pending_review`；提交内容为问题说明、诉求与证据列表。同一合同同时只允许一个未结案件（数据库 `active_dispute_id` 唯一约束 + 事务条件更新双重保证，重复提交返回 409）。
+- **冻结**：立案后合同 `activeDisputeId` 指向该案件，完成确认与后续阶段推进一律拒绝（返回"争议处理中，合同完成与阶段推进已暂停"）。
+- **协商**：案件未结期间，双方均可补充材料；任一方可撤回。补充、撤回、裁决均在数据库事务内执行，并通过案件版本号（`version`）做乐观并发仲裁——客户端携带立案/刷新时观察到的版本提交，服务端执行 `UPDATE … WHERE status='open' AND version=?` 条件占用：并发开始的同类操作只有一个能占用成功，其余匹配 0 行，收到明确 409（"案件状态已被并发操作改变，请刷新后重试"）。MySQL 下的死锁牺牲者（1213）/锁超时（1205）/唯一键冲突（1062）同样映射为 409。撤回后解除冻结，合同状态与阶段保持原样，原流程恢复。
+- **裁决**：仅管理员可裁决，方式为 `full_to_b`（全额归乙方，合同完成）、`full_refund_a`（全额退回甲方，合同终止）或 `proportional`（按比例，两比例之和必须等于 1）。按比例结算按"分"取整、乙方拿余数，保证 `甲方金额 + 乙方金额 = 合同总额` 分毫不差；不守恒的请求整体拒绝，案件保持未结、合同保持冻结。
+- **终态一致**：凡合同收口为 `completed`（`full_to_b` 与 `proportional` 共用同一套终态规则），全部阶段同步置为 `done`，不会残留进行中/待处理里程碑；`full_refund_a` 收口为 `terminated`，阶段保持原样。案件结案后任何补充材料一律拒绝，材料、案件状态与合同结果始终一致。
+- **一致性**：案件状态、合同状态/冻结标记、结算快照（`contracts.settlement`）在同一数据库事务内更新，操作记录（`dispute.open/supplement/withdraw/resolve`）在事务提交后写入；双方工作台与合同卡片实时显示未结争议计数与冻结标识。
+
 ## 枚举出现位置清单
 
 | 枚举 | 后端定义 | 前端定义 | 前端消费 |
@@ -107,6 +117,8 @@ npm run dev
 | RequirementStatus（draft/open/bidding/in_progress/pending_review/completed/cancelled） | `backend/internal/constants/requirement_status.go` | `frontend/src/types/enums.ts` | Requirements、RequirementDetail、Dashboard |
 | BidStatus（pending/accepted/rejected/withdrawn） | `backend/internal/constants/bid_status.go` | `frontend/src/types/enums.ts` | RequirementDetail、Dashboard |
 | ContractStatus（pending_signature/in_progress/pending_review/completed/terminated） | `backend/internal/constants/contract_status.go` | `frontend/src/types/enums.ts` | ContractDetail、Dashboard |
+| DisputeStatus（open/withdrawn/resolved） | `backend/internal/constants/dispute_status.go` | `frontend/src/types/enums.ts` | ContractDetail、Dashboard、DisputePanel |
+| DisputeVerdict（full_to_b/full_refund_a/proportional） | `backend/internal/constants/dispute_status.go` | `frontend/src/types/enums.ts` | ContractDetail、DisputePanel |
 | UserRole（requester/freelancer/both/admin） | `backend/internal/constants/roles.go` | `frontend/src/types/enums.ts` | Layout、RequirementDetail、Dashboard |
 
 ## 主要 API 列表
@@ -125,7 +137,12 @@ npm run dev
 | GET | /api/v1/contracts | 我的合同 |
 | GET | /api/v1/contracts/:id | 合同详情 |
 | POST | /api/v1/contracts/:id/sign · /complete | 签署/完成 |
-| GET | /api/v1/dashboard | 我的工作台 |
+| GET/POST | /api/v1/contracts/:id/disputes | 合同案件历史/提交争议 |
+| GET | /api/v1/disputes | 待裁决案件（管理员） |
+| GET | /api/v1/disputes/:caseId | 案件详情（当事方/管理员） |
+| POST | /api/v1/disputes/:caseId/supplement · /withdraw | 补充材料/撤回 |
+| POST | /api/v1/disputes/:caseId/resolve | 管理员裁决（全额乙方/全额甲方/按比例） |
+| GET | /api/v1/dashboard | 我的工作台（含未结争议） |
 | GET/PATCH | /api/v1/users/:id | 个人资料 |
 | GET | /api/v1/operation-logs | 操作日志 |
 | GET | /healthz、/readyz | 健康检查 |
